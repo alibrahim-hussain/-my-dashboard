@@ -259,16 +259,10 @@ def make_chart(sub, kpi, title, legend_name, target, line_color=BLUE):
     return fig
 
 
-def fig_to_png_bytes(fig, w=800, h=420):
-    """Export via Kaleido or fallback to SVG bytes."""
-    try:
-        buf = io.BytesIO()
-        fig.write_image(buf, format="png", width=w, height=h, scale=2)
-        buf.seek(0)
-        return buf.read(), "png"
-    except Exception:
-        svg_str = fig.to_image(format="svg")
-        return svg_str, "svg"
+def fig_to_html_bytes(fig):
+    """Export figure as standalone HTML (works without kaleido)."""
+    html_str = fig.to_html(include_plotlyjs="cdn", full_html=True)
+    return html_str.encode("utf-8"), "html"
 
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -289,21 +283,23 @@ if "logo_b64" not in st.session_state:
 df_main = st.session_state.df.copy()
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
-logo_html = ""
-if st.session_state.logo_b64:
-    logo_html = f'<img src="data:image/png;base64,{st.session_state.logo_b64}" style="height:48px;"/>'
-else:
-    logo_html = '<div style="color:#a8d4f0;font-size:11px;text-align:right;line-height:1.6"><span style="font-size:14px;font-weight:600;color:#fff">تجمع الشرقية الصحي</span><br>شركة الصحة القابضة</div>'
-
-st.markdown(f"""
-<div class="osc-header">
-    <div style="display:flex;align-items:center;gap:12px;">
-        {logo_html}
-    </div>
-    <div class="osc-header-title">One-Stop Clinic 2026</div>
-    <div style="width:200px"></div>
-</div>
-""", unsafe_allow_html=True)
+hcol1, hcol2, hcol3 = st.columns([2, 3, 2])
+with hcol1:
+    if st.session_state.logo_b64:
+        st.markdown(f'<img src="data:image/png;base64,{st.session_state.logo_b64}" style="height:52px;margin-top:4px"/>', unsafe_allow_html=True)
+    else:
+        st.markdown('''<div style="background:#1a4f8a;border-radius:8px;padding:8px 14px;display:inline-block">
+            <div style="color:#fff;font-size:13px;font-weight:600">تجمع الشرقية الصحي</div>
+            <div style="color:#a8d4f0;font-size:10px">شركة الصحة القابضة</div>
+        </div>''', unsafe_allow_html=True)
+with hcol2:
+    st.markdown('''<div style="text-align:center;padding:6px 0">
+        <div style="font-size:20px;font-weight:700;color:#1a4f8a">One-Stop Clinic 2026</div>
+        <div style="font-size:11px;color:#4a6a8a">Ministry of Health Dashboard</div>
+    </div>''', unsafe_allow_html=True)
+with hcol3:
+    pass
+st.markdown('<hr style="border:none;border-top:3px solid #1a4f8a;margin:4px 0 12px"/>', unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["📊  Overview", "📋  Raw Data", "🔬  Compare Clinics"])
@@ -416,9 +412,9 @@ with tab1:
                          st.session_state.chart_legends[kpi], TARGETS[kpi])
         fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True, key="c0")
-        img_bytes, fmt = fig_to_png_bytes(fig, 800, 420)
-        st.download_button("⬇ Export", img_bytes,
-            f"chart_wait_1st.{fmt}", f"image/{fmt}", key="dl0", use_container_width=True)
+        img_bytes, fmt = fig_to_html_bytes(fig)
+        st.download_button("⬇ Export HTML", img_bytes,
+            f"chart_wait_1st.{fmt}", "text/html", key="dl0", use_container_width=True)
 
     with row1_right:
         for idx, kpi in enumerate(["Number of Enrolled Patients",
@@ -428,9 +424,9 @@ with tab1:
                              st.session_state.chart_legends[kpi], TARGETS[kpi])
             fig.update_layout(height=195, margin=dict(l=45,r=20,t=35,b=30))
             st.plotly_chart(fig, use_container_width=True, key=f"c{idx+1}")
-            img_bytes, fmt = fig_to_png_bytes(fig, 600, 195)
-            st.download_button("⬇ Export", img_bytes,
-                f"chart_{idx+1}.{fmt}", f"image/{fmt}", key=f"dl{idx+1}", use_container_width=True)
+            img_bytes, fmt = fig_to_html_bytes(fig)
+            st.download_button("⬇ Export HTML", img_bytes,
+                f"chart_{idx+1}.{fmt}", "text/html", key=f"dl{idx+1}", use_container_width=True)
 
     # Row 2: 2 bottom charts side by side (both Wait → Surgery, different clinics)
     bot1, bot2 = st.columns(2)
@@ -449,9 +445,9 @@ with tab1:
                              st.session_state.chart_legends[kpi_bot], TARGETS[kpi_bot])
             fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True, key=f"cbot{i}")
-            img_bytes, fmt = fig_to_png_bytes(fig, 700, 300)
-            st.download_button("⬇ Export", img_bytes,
-                f"chart_surgery_{i+1}.{fmt}", f"image/{fmt}", key=f"dlbot{i}", use_container_width=True)
+            img_bytes, fmt = fig_to_html_bytes(fig)
+            st.download_button("⬇ Export HTML", img_bytes,
+                f"chart_surgery_{i+1}.{fmt}", "text/html", key=f"dlbot{i}", use_container_width=True)
 
     # ── Export All ────────────────────────────────────────────────────────────
     st.markdown("---")
@@ -474,16 +470,14 @@ with tab1:
                     fig.update_layout(height=400,
                         title_text=f"<b>{kpi}</b><br><span style='font-size:10px;color:#4a6a8a'>{clinic}</span>")
                     try:
-                        img_buf = io.BytesIO()
-                        fig.write_image(img_buf, format="png", width=800, height=400, scale=2)
-                        img_buf.seek(0)
+                        html_str = fig.to_html(include_plotlyjs="cdn", full_html=True)
                         safe_clinic = clinic.replace(" ","_").replace("/","_")
                         safe_kpi    = KPI_SHORT[kpi].replace(" ","_").replace("→","to")
-                        zf.writestr(f"{safe_clinic}/{safe_kpi}.png", img_buf.read())
+                        zf.writestr(f"{safe_clinic}/{safe_kpi}.html", html_str.encode("utf-8"))
                     except Exception:
                         pass
         zip_buf.seek(0)
-        st.download_button("⬇ Download ZIP", zip_buf.read(),
+        st.download_button("⬇ Download ZIP (HTML charts)", zip_buf.read(),
                            "osc_all_clinics.zip", "application/zip")
 
 
@@ -580,9 +574,9 @@ with tab3:
             fig.update_layout(**layout)
 
         st.plotly_chart(fig, use_container_width=True)
-        img_bytes, fmt = fig_to_png_bytes(fig, 1100, 500)
+        img_bytes, fmt = fig_to_html_bytes(fig)
         st.download_button("⬇ Export Chart", img_bytes,
             f"compare_{KPI_SHORT[cmp_kpi].replace(' ','_').replace('→','to')}.{fmt}",
-            f"image/{fmt}")
+            "text/html")
     else:
         st.info("Select at least one clinic.")
