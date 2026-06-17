@@ -3,6 +3,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import io
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import base64
 import zipfile
 from copy import deepcopy
@@ -264,6 +268,42 @@ def fig_to_html_bytes(fig):
     html_str = fig.to_html(include_plotlyjs="cdn", full_html=True)
     return html_str.encode("utf-8"), "html"
 
+def export_chart_png(df_sub, kpi, title, legend_name, target):
+    """Export chart as PNG using matplotlib — no kaleido needed."""
+    months = [str(m) for m in sorted(df_sub["Month"].unique(),
+              key=lambda m: MONTH_ORDER.index(str(m)) if str(m) in MONTH_ORDER else 99)]
+    values = df_sub.groupby("Month", observed=True)["Value"].mean().reindex(months).fillna(0).tolist()
+
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor="white")
+    ax.set_facecolor("#f7fafd")
+
+    ax.plot(months, values, color="#1665c4", linewidth=2, marker="o",
+            markersize=6, markerfacecolor="#1665c4", markeredgecolor="white",
+            markeredgewidth=1.5, label=legend_name, zorder=3)
+    ax.fill_between(months, values, alpha=0.07, color="#1665c4")
+
+    if target:
+        ax.axhline(y=target, color="#e8a020", linewidth=1.5, linestyle="-", label=f"Target: {target}", zorder=2)
+
+    ax.set_title(title, fontsize=12, fontweight="bold", color="#1a4f8a", pad=12)
+    ax.set_xlabel("", fontsize=10)
+    ax.tick_params(colors="#4a6a8a", labelsize=9)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#dce8f5")
+    ax.spines["bottom"].set_color("#dce8f5")
+    ax.yaxis.grid(True, color="#e8eef5", linewidth=0.7, zorder=0)
+    ax.set_axisbelow(True)
+    if target or legend_name:
+        ax.legend(fontsize=9, framealpha=0.9, edgecolor="#dce8f5")
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
+
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "df" not in st.session_state:
@@ -323,13 +363,6 @@ with tab1:
                     st.warning("⚠️ No data")
             except Exception as e:
                 st.error(str(e))
-
-    with fc2:
-        logo_up = st.file_uploader("🖼 Logo", type=["png","jpg","jpeg"], label_visibility="collapsed")
-        if logo_up:
-            img_bytes = logo_up.read()
-            st.session_state.logo_b64 = base64.b64encode(img_bytes).decode()
-            st.rerun()
 
     # Facility filter — single select
     all_fac = sorted(df_main["Facility"].dropna().unique())
@@ -412,8 +445,6 @@ with tab1:
                          st.session_state.chart_legends[kpi], TARGETS[kpi])
         fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True, key="c0")
-        img_bytes, fmt = fig_to_html_bytes(fig)
-        st.download_button("⬇ Export HTML", img_bytes,
             f"chart_wait_1st.{fmt}", "text/html", key="dl0", use_container_width=True)
 
     with row1_right:
@@ -424,8 +455,6 @@ with tab1:
                              st.session_state.chart_legends[kpi], TARGETS[kpi])
             fig.update_layout(height=195, margin=dict(l=45,r=20,t=35,b=30))
             st.plotly_chart(fig, use_container_width=True, key=f"c{idx+1}")
-            img_bytes, fmt = fig_to_html_bytes(fig)
-            st.download_button("⬇ Export HTML", img_bytes,
                 f"chart_{idx+1}.{fmt}", "text/html", key=f"dl{idx+1}", use_container_width=True)
 
     # Row 2: 2 bottom charts side by side (both Wait → Surgery, different clinics)
@@ -445,8 +474,6 @@ with tab1:
                              st.session_state.chart_legends[kpi_bot], TARGETS[kpi_bot])
             fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True, key=f"cbot{i}")
-            img_bytes, fmt = fig_to_html_bytes(fig)
-            st.download_button("⬇ Export HTML", img_bytes,
                 f"chart_surgery_{i+1}.{fmt}", "text/html", key=f"dlbot{i}", use_container_width=True)
 
     # ── Export All ────────────────────────────────────────────────────────────
@@ -454,7 +481,7 @@ with tab1:
     st.markdown("#### Export All — per Clinic")
 
     all_clinics_list = sorted(df_main["Clinic"].dropna().unique())
-    if st.button("📦 Export All Clinics as PNG (ZIP)", use_container_width=False):
+    if st.button("📦 Export All Clinics (ZIP)", use_container_width=False):
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w") as zf:
             for clinic in all_clinics_list:
@@ -470,15 +497,19 @@ with tab1:
                     fig.update_layout(height=400,
                         title_text=f"<b>{kpi}</b><br><span style='font-size:10px;color:#4a6a8a'>{clinic}</span>")
                     try:
-                        html_str = fig.to_html(include_plotlyjs="cdn", full_html=True)
+                        png_bytes = export_chart_png(sub, kpi,
+                            f"{kpi}
+{clinic}",
+                            st.session_state.chart_legends[kpi],
+                            TARGETS[kpi])
                         safe_clinic = clinic.replace(" ","_").replace("/","_")
                         safe_kpi    = KPI_SHORT[kpi].replace(" ","_").replace("→","to")
-                        zf.writestr(f"{safe_clinic}/{safe_kpi}.html", html_str.encode("utf-8"))
-                    except Exception:
-                        pass
+                        zf.writestr(f"{safe_clinic}/{safe_kpi}.png", png_bytes)
+                    except Exception as e:
+                        st.warning(f"Could not export {clinic} / {kpi}: {e}")
         zip_buf.seek(0)
-        st.download_button("⬇ Download ZIP (HTML charts)", zip_buf.read(),
-                           "osc_all_clinics.zip", "application/zip")
+        st.download_button("⬇ Download ZIP", zip_buf.read(),
+                           "osc_all_clinics_PNG.zip", "application/zip")
 
 
 # ════════════════════ TAB 2 — RAW DATA ══════════════════════════════════════
