@@ -445,7 +445,6 @@ with tab1:
                          st.session_state.chart_legends[kpi], TARGETS[kpi])
         fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True, key="c0")
-            f"chart_wait_1st.{fmt}", "text/html", key="dl0", use_container_width=True)
 
     with row1_right:
         for idx, kpi in enumerate(["Number of Enrolled Patients",
@@ -455,7 +454,6 @@ with tab1:
                              st.session_state.chart_legends[kpi], TARGETS[kpi])
             fig.update_layout(height=195, margin=dict(l=45,r=20,t=35,b=30))
             st.plotly_chart(fig, use_container_width=True, key=f"c{idx+1}")
-                f"chart_{idx+1}.{fmt}", "text/html", key=f"dl{idx+1}", use_container_width=True)
 
     # Row 2: 2 bottom charts side by side (both Wait → Surgery, different clinics)
     bot1, bot2 = st.columns(2)
@@ -474,7 +472,6 @@ with tab1:
                              st.session_state.chart_legends[kpi_bot], TARGETS[kpi_bot])
             fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True, key=f"cbot{i}")
-                f"chart_surgery_{i+1}.{fmt}", "text/html", key=f"dlbot{i}", use_container_width=True)
 
     # ── Export All ────────────────────────────────────────────────────────────
     st.markdown("---")
@@ -498,8 +495,7 @@ with tab1:
                         title_text=f"<b>{kpi}</b><br><span style='font-size:10px;color:#4a6a8a'>{clinic}</span>")
                     try:
                         png_bytes = export_chart_png(sub, kpi,
-                            f"{kpi}
-{clinic}",
+                            f"{kpi} — {clinic}",
                             st.session_state.chart_legends[kpi],
                             TARGETS[kpi])
                         safe_clinic = clinic.replace(" ","_").replace("/","_")
